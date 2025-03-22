@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DIAPS - Disaster Information Aggregation and Prediction Software</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+</head>
+<body>
+    <header>
+        <h1>DIAPS</h1>
+        <p>Disaster Information Aggregation and Prediction Software</p>
+    </header>
+    
+    <main>
+        <div class="container">
+            <div class="map-section">
+                <h2>Select Location</h2>
+                <p class="instruction-text">Click anywhere on the map to view disaster and weather information for that location.</p>
+                <div id="map"></div>
+                <div class="map-legend">
+                    <div class="legend-item">
+                        <div class="legend-marker user-marker"></div>
+                        <span>Your Location</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-marker earthquake-marker"></div>
+                        <span>Recent Earthquake</span>
+                    </div>
+                </div>
+            </div>
+            <div class="info-section">
+                <h2>About DIAPS</h2>
+                <p>DIAPS (Disaster Information Aggregation and Prediction Software) helps you assess potential natural disaster risks for any location worldwide. The system combines weather forecasts, historical earthquake data, and geographical information to provide risk assessments.</p>
+                <div class="features">
+                    <div class="feature-item">
+                        <div class="feature-icon weather-icon"></div>
+                        <h3>Weather Forecasts</h3>
+                        <p>Get 3-day weather forecasts for any location with temperature, precipitation, and wind data.</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon earthquake-icon"></div>
+                        <h3>Earthquake Monitoring</h3>
+                        <p>View recent earthquake activity within 100km of your selected location.</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon risk-icon"></div>
+                        <h3>Risk Assessment</h3>
+                        <p>Receive risk evaluations for floods, landslides, heavy rain, and tsunamis based on location data.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <footer>
+        <p>&copy; 2025 DIAPS - Disaster Information Aggregation and Prediction Software</p>
+    </footer>
+
+    <script src="index.js"></script>
+</body>
+</html>
