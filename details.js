@@ -1,267 +1,358 @@
-const apiKeyWeatherAPI = 'b1fab2921c2a4edaa6f80559232412'; 
+document.addEventListener('DOMContentLoaded', function() {
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const lat = urlParams.get('lat');
+    const lng = urlParams.get('lng');
+    
+    // Update location info
+    document.getElementById('location-title').textContent = 'Location Details';
+    document.getElementById('coordinates').textContent = `Coordinates: ${lat}, ${lng}`;
+    
+    // Fetch all data
+    fetchWeatherData(lat, lng);
+    fetchElevationData(lat, lng);
+    fetchEarthquakeData(lat, lng);
+    calculateDisasterRisks(lat, lng);
+});
 
-// Get query parameters from URL
-const urlParams = new URLSearchParams(window.location.search);
-const lat = parseFloat(urlParams.get('lat'));
-const lng = parseFloat(urlParams.get('lng'));
+const WEATHER_API_KEY = 'b1fab2921c2a4edaa6f80559232412';
 
-// Check if latitude and longitude are correctly retrieved
-console.log('Latitude:', lat);
-console.log('Longitude:', lng);
-
-// Initialize the map
-const map = L.map('map').setView([lat, lng], 10);
-
-// Add OpenStreetMap tile layer
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(map);
-
-// Add marker for selected location
-L.marker([lat, lng]).addTo(map)
-    .bindPopup(`Selected location: ${lat.toFixed(6)}, ${lng.toFixed(6)}`)
-    .openPopup();
-
-fetchPlaceName(lat, lng);
-
-// Fetch data for the location
-fetchData(lat, lng);
-
-async function fetchPlaceName(lat, lng) {
-    try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
-        if (!response.ok) {
-            throw new Error('Failed to fetch place name');
-        }
-        const data = await response.json();
-        const placeName = data.display_name;
-        
-        document.getElementById('placeName').innerText = `Place: ${placeName}`;
-    } catch (error) {
-        console.error('Error fetching place name:', error);
-        document.getElementById('placeName').innerText = '<strong>Place</strong>: Unknown';
-    }
-}
-
-async function fetchData(lat, lng) {
-    try {
-        await fetchWeatherData(lat, lng);
-        await fetchEarthquakeData(lat, lng);
-        await fetchElevationData(lat, lng);
-    } catch (error) {
-        console.error('Error fetching data:', error);
-    }
-}
-
+// Fetch weather data
 async function fetchWeatherData(lat, lng) {
     try {
-        const response = await fetch(`https://api.weatherapi.com/v1/forecast.json?key=${apiKeyWeatherAPI}&q=${lat},${lng}&days=3`);
-        if (!response.ok) {
-            throw new Error('Failed to fetch weather data');
-        }
+        const response = await fetch(`https://api.weatherapi.com/v1/forecast.json?key=${WEATHER_API_KEY}&q=${lat},${lng}&days=3&aqi=no&alerts=yes`);
         const data = await response.json();
-        console.log('Weather Data:', data);
-        displayWeatherData(data);
-        displayRiskData(data);
+        
+        if (response.ok) {
+            displayWeatherData(data);
+        } else {
+            throw new Error(data.error.message);
+        }
     } catch (error) {
         console.error('Error fetching weather data:', error);
-        document.getElementById('weatherData').innerHTML = `<p>Error fetching weather data. Please try again.</p>`;
-        document.getElementById('riskData').innerHTML = `<p>Error fetching risk data. Please try again.</p>`;
+        document.getElementById('weather-loading').textContent = 'Failed to load weather data. ' + error.message;
+        document.getElementById('weather-loading').classList.add('error-message');
     }
 }
 
+// Display weather data
 function displayWeatherData(data) {
-    const forecasts = data.forecast.forecastday;
-    const weatherHTML = forecasts.map(day => {
-        const date = new Date(day.date).toLocaleDateString();
-
-        return `
-            <div class="weather-day">
-                <h4>${date}</h4>
-                <p>Temperature: ${day.day.avgtemp_c}°C</p>
-                <p>Weather: ${day.day.condition.text}</p>
-                <p>Humidity: ${day.day.avghumidity}%</p>
-                <p>Wind Speed: ${day.day.maxwind_kph} kph</p>
-                <p>Rain Rate: ${day.day.totalprecip_mm} mm</p>
-            </div>
+    const weatherContainer = document.getElementById('weather-days');
+    weatherContainer.innerHTML = '';
+    
+    // Update location title
+    document.getElementById('location-title').textContent = `${data.location.name}, ${data.location.country}`;
+    
+    // Display forecast for 3 days
+    data.forecast.forecastday.forEach(day => {
+        const date = new Date(day.date);
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+        
+        const dayElement = document.createElement('div');
+        dayElement.className = 'weather-day';
+        dayElement.innerHTML = `
+            <h4>${dayName}, ${date.toLocaleDateString()}</h4>
+            <img src="${day.day.condition.icon}" alt="${day.day.condition.text}">
+            <p class="weather-condition">${day.day.condition.text}</p>
+            <p>Temp: ${day.day.avgtemp_c}°C (${day.day.avgtemp_f}°F)</p>
+            <p>Max: ${day.day.maxtemp_c}°C | Min: ${day.day.mintemp_c}°C</p>
+            <p>Humidity: ${day.day.avghumidity}%</p>
+            <p>Wind: ${day.day.maxwind_kph} km/h</p>
+            <p>Rain: ${day.day.totalprecip_mm} mm</p>
         `;
-    }).join('');
-
-    document.getElementById('weatherData').innerHTML = weatherHTML;
-}
-
-function displayRiskData(data) {
-    const forecasts = data.forecast.forecastday;
-    const riskData = forecasts.map(day => {
-        const date = new Date(day.date).toLocaleDateString();
-        const rainAmount = day.day.totalprecip_mm;
-
-        const floodRisk = rainAmount > 50 ? 3 : rainAmount > 20 ? 2 : 1;
-        const heavyRainRisk = rainAmount > 20 ? 3 : 1;
-        const tsunamiRisk = isNearWaterBody(lat, lng) ? 2 : 1;
-
-        const elevation = document.getElementById('elevationData').getAttribute('data-elevation');
-        const landslideRisk = calculateLandslideRisk(elevation, rainAmount);
-
-        return { date, floodRisk, heavyRainRisk, tsunamiRisk, landslideRisk, rainAmount };
+        weatherContainer.appendChild(dayElement);
     });
-
-    displayGraph(riskData);
-
-    const riskHTML = riskData.map(risk => {
-        return `
-            <div class="risk-day">
-                <h4>${risk.date}</h4>
-                <p>Rain Amount: ${risk.rainAmount} mm</p>
-                <p>Flood Risk: ${risk.floodRisk === 3 ? "High" : risk.floodRisk === 2 ? "Moderate" : "Low"}</p>
-                <p>Heavy Rain Risk: ${risk.heavyRainRisk === 3 ? "High" : "Low"}</p>
-                <p>Tsunami Risk: ${risk.tsunamiRisk === 2 ? "Possible" : "None"}</p>
-                <p>Landslide Risk: ${risk.landslideRisk === 3 ? "High" : risk.landslideRisk === 2 ? "Moderate" : "Low"}</p>
-            </div>
-        `;
-    }).join('');
-
-    document.getElementById('riskData').innerHTML = riskHTML;
+    
+    // Hide loading, show data
+    document.getElementById('weather-loading').classList.add('hidden');
+    document.getElementById('weather-data').classList.remove('hidden');
 }
 
-function calculateLandslideRisk(elevation, rainAmount) {
-    if (!elevation) return 1;
-
-    if (elevation > 1000 && rainAmount > 50) {
-        return 3;
-    } else if (elevation > 500 && rainAmount > 20) {
-        return 2;
-    } else {
-        return 1;
-    }
-}
-
-function isNearWaterBody(lat, lng) {
-    const waterBodyRanges = [
-        { latMin: 84, latMax: 60, lngMin: -80, lngMax: 20 },
-        { latMin: 65, latMax: 65, lngMin: 120, lngMax: -80 },
-        { latMin: 30, latMax: 60, lngMin: 20, lngMax: 120 },
-        { latMin: 65, latMax: 90, lngMin: -180, lngMax: 180 },
-        { latMin: 5, latMax: 20, lngMin: 92, lngMax: 100 }
-    ];
-
-    return waterBodyRanges.some(range => lat >= range.latMin && lat <= range.latMax && lng >= range.lngMin && lng <= range.lngMax);
-}
-
-async function fetchEarthquakeData(lat, lng) {
-    const maxRadiusKm = 100;
-    try {
-        const response = await fetch(`https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${lat}&longitude=${lng}&maxradiuskm=${maxRadiusKm}`);
-        if (!response.ok) {
-            throw new Error('Failed to fetch earthquake data');
-        }
-        const data = await response.json();
-        console.log('Earthquake Data:', data);
-        displayEarthquakeData(data);
-    } catch (error) {
-        console.error('Error fetching earthquake data:', error);
-        document.getElementById('earthquakeData').innerHTML = `<p>Error fetching earthquake data. <strong>Please try again</strong>.</p>`;
-    }
-}
-
-function displayEarthquakeData(data) {
-    if (data.features.length === 0) {
-        document.getElementById('earthquakeData').innerHTML = `<p>No recent earthquakes found within <strong>100 km</strong>.</p>`;
-        return;
-    }
-
-    const earthquakes = data.features.map(eq => {
-        const { place, mag, time } = eq.properties;
-        const date = new Date(time).toLocaleString();
-        return `<p>Location: ${place} | Magnitude: ${mag} | Time: ${date}</p>`;
-    }).join('');
-
-    document.getElementById('earthquakeData').innerHTML = `<h3>Recent Earthquakes (within 100 km)</h3>${earthquakes}`;
-}
-
+// Fetch elevation data
 async function fetchElevationData(lat, lng) {
     try {
         const response = await fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`);
-        if (!response.ok) {
-            throw new Error('Failed to fetch elevation data');
-        }
         const data = await response.json();
-        console.log('Elevation Data:', data);
-        displayElevationData(data);
+        
+        if (response.ok && data.results && data.results.length > 0) {
+            const elevation = data.results[0].elevation;
+            document.getElementById('elevation').textContent = `Elevation: ${elevation} meters`;
+        } else {
+            throw new Error('Failed to get elevation data');
+        }
     } catch (error) {
         console.error('Error fetching elevation data:', error);
-        document.getElementById('elevationData').innerHTML = `<p>Error fetching elevation data. Please try again.</p>`;
+        document.getElementById('elevation').textContent = 'Elevation: Data unavailable';
+        document.getElementById('elevation').classList.add('error-text');
     }
 }
 
-function displayElevationData(data) {
-    const elevation = data.results[0].elevation;
-    document.getElementById('elevationData').innerHTML = `<p><strong>Elevation</strong>: ${elevation} meters</p>`;
-    document.getElementById('elevationData').setAttribute('data-elevation', elevation);
+// Fetch earthquake data
+async function fetchEarthquakeData(lat, lng) {
+    try {
+        // Get earthquakes in the last 30 days within 100km radius
+        const endTime = new Date().toISOString();
+        const startTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        
+        const response = await fetch(`https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=${startTime}&endtime=${endTime}&latitude=${lat}&longitude=${lng}&maxradiuskm=100`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            displayEarthquakeData(data);
+        } else {
+            throw new Error('Failed to get earthquake data');
+        }
+    } catch (error) {
+        console.error('Error fetching earthquake data:', error);
+        document.getElementById('earthquake-loading').textContent = 'Failed to load earthquake data. ' + error.message;
+        document.getElementById('earthquake-loading').classList.add('error-message');
+    }
 }
 
-function displayGraph(riskData) {
-    const labels = riskData.map(risk => risk.date);
-    const floodRisks = riskData.map(risk => risk.floodRisk);
-    const heavyRainRisks = riskData.map(risk => risk.heavyRainRisk);
-    const tsunamiRisks = riskData.map(risk => risk.tsunamiRisk);
-    const landslideRisks = riskData.map(risk => risk.landslideRisk);
+// Display earthquake data
+function displayEarthquakeData(data) {
+    const earthquakeList = document.getElementById('earthquake-list');
+    earthquakeList.innerHTML = '';
+    
+    if (data.features && data.features.length > 0) {
+        // Sort earthquakes by time (most recent first)
+        data.features.sort((a, b) => b.properties.time - a.properties.time);
+        
+        // Create list of earthquakes
+        data.features.forEach(quake => {
+            const magnitude = quake.properties.mag;
+            const location = quake.properties.place;
+            const time = new Date(quake.properties.time).toLocaleString();
+            const depth = quake.geometry.coordinates[2];
+            
+            const quakeElement = document.createElement('div');
+            quakeElement.className = 'earthquake-item';
+            
+            // Determine severity class based on magnitude
+            let severityClass = '';
+            if (magnitude >= 6) {
+                severityClass = 'severe';
+            } else if (magnitude >= 4.5) {
+                severityClass = 'moderate';
+            } else {
+                severityClass = 'minor';
+            }
+            
+            quakeElement.innerHTML = `
+                <h4 class="${severityClass}">Magnitude ${magnitude}</h4>
+                <p>Location: ${location}</p>
+                <p>Time: ${time}</p>
+                <p>Depth: ${depth} km</p>
+                <div class="quake-details-btn">Details</div>
+            `;
+            earthquakeList.appendChild(quakeElement);
+            
+            // Add click event for details button
+            const detailsBtn = quakeElement.querySelector('.quake-details-btn');
+            detailsBtn.addEventListener('click', function() {
+                alert(`Earthquake Details\n\nMagnitude: ${magnitude}\nLocation: ${location}\nTime: ${time}\nDepth: ${depth} km\nFelt Reports: ${quake.properties.felt || 'None'}\nSignificance: ${quake.properties.sig}`);
+            });
+        });
+    } else {
+        // No earthquakes found
+        earthquakeList.innerHTML = '<div class="no-data-message"><p>No recent earthquakes found within <strong>100 km</strong>.</p><p>This is good news! 🎉</p></div>';
+    }
+    
+    // Hide loading, show data
+    document.getElementById('earthquake-loading').classList.add('hidden');
+    document.getElementById('earthquake-data').classList.remove('hidden');
+}
 
-    const ctx = document.getElementById('riskChart').getContext('2d');
+// Calculate disaster risks
+function calculateDisasterRisks(lat, lng) {
+    // This is a simplified risk calculation based on weather data
+    // In a real app, you'd use more sophisticated models and additional data sources
+    
+    // Simulating a delay for calculation
+    setTimeout(() => {
+        // These risk values would normally be calculated based on actual data
+        // For demo purposes, we're generating semi-random values
+        
+        // For more realistic demo, use the coordinates to adjust risks
+        // Coastal areas might have higher tsunami risk, etc.
+        
+        const isCoastal = isCoastalLocation(lat, lng);
+        const elevation = parseFloat(document.getElementById('elevation').textContent.split(' ')[1]) || 0;
+        
+        // Get weather data from displayed weather (if available)
+        let rainAmount = 0;
+        const weatherData = document.getElementById('weather-data');
+        if (!weatherData.classList.contains('hidden')) {
+            const weatherDays = document.querySelectorAll('.weather-day');
+            if (weatherDays.length > 0) {
+                const rainText = weatherDays[0].querySelector('p:nth-child(8)').textContent;
+                rainAmount = parseFloat(rainText.split(' ')[1]) || 0;
+            }
+        }
+        
+        // Calculate risks based on data
+        let floodRisk = Math.min(5, Math.max(1, Math.round((rainAmount / 10) * 5)));
+        if (elevation < 10) floodRisk += 1;
+        if (floodRisk > 5) floodRisk = 5;
+        
+        let rainRisk = Math.min(5, Math.max(1, Math.round((rainAmount / 15) * 5)));
+        
+        let landslideRisk = 1;
+        if (elevation > 100) {
+            landslideRisk = Math.min(5, Math.max(1, Math.round((rainAmount / 8) * 3)));
+        }
+        
+        let tsunamiRisk = 1;
+        if (isCoastal && elevation < 20) {
+            tsunamiRisk = Math.min(5, Math.max(1, 2 + Math.random() * 2));
+        }
+        
+        // Update risk text with classes for color coding
+        document.getElementById('flood-risk').innerHTML = `Flood Risk: <span class="${getRiskClass(floodRisk)}">${getRiskText(floodRisk)}</span>`;
+        document.getElementById('rain-risk').innerHTML = `Heavy Rain Risk: <span class="${getRiskClass(rainRisk)}">${getRiskText(rainRisk)}</span>`;
+        document.getElementById('landslide-risk').innerHTML = `Landslide Risk: <span class="${getRiskClass(landslideRisk)}">${getRiskText(landslideRisk)}</span>`;
+        document.getElementById('tsunami-risk').innerHTML = `Tsunami Risk: <span class="${getRiskClass(tsunamiRisk)}">${getRiskText(tsunamiRisk)}</span>`;
+        
+        // Apply risk-level classes to parent elements
+        document.getElementById('flood-risk').className = `tooltip risk-${getRiskClass(floodRisk)}`;
+        document.getElementById('rain-risk').className = `tooltip risk-${getRiskClass(rainRisk)}`;
+        document.getElementById('landslide-risk').className = `tooltip risk-${getRiskClass(landslideRisk)}`;
+        document.getElementById('tsunami-risk').className = `tooltip risk-${getRiskClass(tsunamiRisk)}`;
+        
+        // Create the risk chart
+        createRiskChart([floodRisk, rainRisk, landslideRisk, tsunamiRisk]);
+        
+        // Hide loading, show data
+        document.getElementById('disaster-loading').classList.add('hidden');
+        document.getElementById('disaster-data').classList.remove('hidden');
+    }, 1500);
+}
+
+// Helper function to determine if location is coastal (simplified)
+function isCoastalLocation(lat, lng) {
+    // This is a very simplified check
+    // In a real app, you'd use coastline data or proximity to oceans
+    // For demo, we'll just check if the location is near certain known oceans
+    
+    // Check if near Pacific
+    if ((lng > 120 || lng < -120) && (lat < 60 && lat > -60)) return true;
+    
+    // Check if near Atlantic
+    if ((lng > -80 && lng < 0) && (lat < 60 && lat > -40)) return true;
+    
+    // Check if near Indian Ocean
+    if ((lng > 40 && lng < 120) && (lat < 20 && lat > -40)) return true;
+    
+    return false;
+}
+
+// Helper function to convert risk level to text
+function getRiskText(riskLevel) {
+    switch(riskLevel) {
+        case 1: return "Very Low";
+        case 2: return "Low";
+        case 3: return "Moderate";
+        case 4: return "High";
+        case 5: return "Very High";
+        default: return "Unknown";
+    }
+}
+
+// Helper function to get CSS class for risk level
+function getRiskClass(riskLevel) {
+    switch(riskLevel) {
+        case 1: return "very-low";
+        case 2: return "low";
+        case 3: return "moderate";
+        case 4: return "high";
+        case 5: return "very-high";
+        default: return "";
+    }
+}
+
+// Create risk chart
+function createRiskChart(riskLevels) {
+    const ctx = document.getElementById('risk-chart').getContext('2d');
+    
+    // Determine if we need to adjust the y-axis
+    // If all risks are at minimum (1), set min to 0 for better visualization
+    const minY = riskLevels.every(level => level === 1) ? 0 : 1;
+    
+    // Colors for risk levels
+    const backgroundColors = [
+        'rgba(54, 162, 235, 0.7)',
+        'rgba(75, 192, 192, 0.7)',
+        'rgba(153, 102, 255, 0.7)',
+        'rgba(255, 99, 132, 0.7)'
+    ];
+    
+    const borderColors = [
+        'rgba(54, 162, 235, 1)',
+        'rgba(75, 192, 192, 1)',
+        'rgba(153, 102, 255, 1)',
+        'rgba(255, 99, 132, 1)'
+    ];
+    
+    // Create chart
     new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Flood Risk',
-                    data: floodRisks,
-                    backgroundColor: 'rgba(60, 102, 192, 1)', // Light cyan for dark background
-                    borderColor: 'rgba(75, 192, 192, 1)',       // Cyan border
-                    borderWidth: 1
-                },
-                {
-                    label: 'Heavy Rain Risk',
-                    data: heavyRainRisks,
-                    backgroundColor: 'rgba(255, 159, 64, 1)',  // Light orange for dark background
-                    borderColor: 'rgba(255, 159, 64, 1)',         // Orange border
-                    borderWidth: 1
-                },
-                {
-                    label: 'Tsunami Risk',
-                    data: tsunamiRisks,
-                    backgroundColor: 'rgba(54, 162, 235, 1)',  // Light blue for dark background
-                    borderColor: 'rgba(54, 162, 235, 1)',         // Blue border
-                    borderWidth: 1
-                },
-                {
-                    label: 'Landslide Risk',
-                    data: landslideRisks,
-                    backgroundColor: 'rgba(153, 102, 255, 1)', // Light purple for dark background
-                    borderColor: 'rgba(153, 102, 255, 1)',        // Purple border
-                    borderWidth: 1
-                }
-            ]
+            labels: ['Flood', 'Heavy Rain', 'Landslide', 'Tsunami'],
+            datasets: [{
+                label: 'Risk Level (1-5)',
+                data: riskLevels,
+                backgroundColor: backgroundColors,
+                borderColor: borderColors,
+                borderWidth: 1
+            }]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             scales: {
                 y: {
-                    beginAtZero: true,
+                    beginAtZero: minY === 0,
+                    min: minY,
+                    max: 5,
                     ticks: {
-                        color: '#ffffff',  // White tick labels
+                        stepSize: 1,
+                        callback: function(value) {
+                            if (value === 1) return "Very Low";
+                            if (value === 2) return "Low";
+                            if (value === 3) return "Moderate";
+                            if (value === 4) return "High";
+                            if (value === 5) return "Very High";
+                            return value;
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(200, 200, 200, 0.2)'
                     }
                 },
                 x: {
-                    ticks: {
-                        color: '#ffffff',  // White tick labels
+                    grid: {
+                        display: false
                     }
                 }
             },
             plugins: {
                 legend: {
-                    labels: {
-                        color: '#ffffff'  // White legend labels
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.raw;
+                            let riskText = "";
+                            switch(value) {
+                                case 1: riskText = "Very Low"; break;
+                                case 2: riskText = "Low"; break;
+                                case 3: riskText = "Moderate"; break;
+                                case 4: riskText = "High"; break;
+                                case 5: riskText = "Very High"; break;
+                            }
+                            return `Risk: ${riskText} (${value}/5)`;
+                        }
                     }
                 }
             }
